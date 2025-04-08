@@ -1,0 +1,194 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract FoodTraceability {
+    // 定义角色枚举
+    enum UserRole {
+        Producer,
+        Distributor,
+        Retailer
+    }
+
+    // 用户结构体（新增exists标志）
+    struct User {
+        string nickname;
+        string company;
+        UserRole role;
+        bool exists;
+    }
+
+    // 订单结构体
+    struct ProductionOrder {
+        string traceNumber;
+        string foodName;
+        string foodAddress;
+        uint quality;
+    }
+
+    struct DistributionOrder {
+        string traceNumber;
+        string foodName;
+        string foodAddress;
+        address userAddress;
+    }
+
+    struct SalesOrder {
+        string traceNumber;
+        string foodName;
+        string foodAddress;
+        address userAddress;
+    }
+
+    // 追溯信息结构体
+    struct FoodTraceInfo {
+        string traceNumber;
+        string name;
+        string foodAddress;
+        string produceTime;
+        string from;
+        string quality;
+    }
+
+    // 存储映射
+    mapping(address => User) public users;
+    mapping(string => ProductionOrder) public productionOrders;
+    mapping(string => DistributionOrder) public distributionOrders;
+    mapping(string => SalesOrder) public salesOrders;
+    mapping(string => FoodTraceInfo) public foodTraceInfos;
+
+    // 管理员地址
+    address public admin;
+
+    // 事件定义
+    event ProductionOrderCreated(string traceNumber);
+    event DistributionOrderCreated(string traceNumber);
+    event SalesOrderCreated(string traceNumber);
+
+    // 构造函数
+    constructor() {
+        admin = msg.sender;
+    }
+
+    // 权限修饰器
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin");
+        _;
+    }
+
+    modifier onlyProducer() {
+        require(users[msg.sender].role == UserRole.Producer, "Only producer");
+        _;
+    }
+
+    modifier onlyDistributor() {
+        require(users[msg.sender].role == UserRole.Distributor, "Only distributor");
+        _;
+    }
+
+    modifier onlyRetailer() {
+        require(users[msg.sender].role == UserRole.Retailer, "Only retailer");
+        _;
+    }
+
+    // 用户管理
+    function createUser(
+        address _userAddress,
+        string memory _nickname,
+        string memory _company,
+        UserRole _role
+    ) public onlyAdmin {
+        require(!users[_userAddress].exists, "User exists");
+        require(bytes(_nickname).length > 0, "Empty nickname");
+        
+        users[_userAddress] = User({
+            nickname: _nickname,
+            company: _company,
+            role: _role,
+            exists: true
+        });
+    }
+
+    // 生产订单
+    function createProductionOrder(
+        string memory _traceNumber,
+        string memory _foodName,
+        string memory _foodAddress,
+        uint _quality
+    ) public onlyProducer {
+        require(bytes(productionOrders[_traceNumber].traceNumber).length == 0, "Order exists");
+        
+        productionOrders[_traceNumber] = ProductionOrder(
+            _traceNumber,
+            _foodName,
+            _foodAddress,
+            _quality
+        );
+
+        foodTraceInfos[_traceNumber] = FoodTraceInfo({
+            traceNumber: _traceNumber,
+            name: _foodName,
+            foodAddress: _foodAddress,
+            produceTime: _timestampToString(block.timestamp),
+            from: users[msg.sender].company,
+            quality: _uintToString(_quality)
+        });
+        
+        emit ProductionOrderCreated(_traceNumber);
+    }
+
+    // 分销订单
+    function createDistributionOrder(
+        string memory _traceNumber,
+        string memory _foodAddress
+    ) public onlyDistributor {
+        require(bytes(productionOrders[_traceNumber].traceNumber).length != 0, "No production");
+        
+        distributionOrders[_traceNumber] = DistributionOrder({
+            traceNumber: _traceNumber,
+            foodName: productionOrders[_traceNumber].foodName,
+            foodAddress: _foodAddress,
+            userAddress: msg.sender
+        });
+        
+        emit DistributionOrderCreated(_traceNumber);
+    }
+
+    // 销售订单
+    function createSalesOrder(
+        string memory _traceNumber,
+        string memory _foodAddress
+    ) public onlyRetailer {
+        require(bytes(distributionOrders[_traceNumber].traceNumber).length != 0, "No distribution");
+        
+        salesOrders[_traceNumber] = SalesOrder({
+            traceNumber: _traceNumber,
+            foodName: distributionOrders[_traceNumber].foodName,
+            foodAddress: _foodAddress,
+            userAddress: msg.sender
+        });
+        
+        emit SalesOrderCreated(_traceNumber);
+    }
+
+    // 数据类型转换工具
+    function _uintToString(uint _value) internal pure returns (string memory) {
+        if (_value == 0) return "0";
+        uint temp = _value;
+        uint digits;
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+        bytes memory buffer = new bytes(digits);
+        while (_value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + _value % 10));
+            _value /= 10;
+        }
+        return string(buffer);
+    }
+
+    function _timestampToString(uint _timestamp) internal pure returns (string memory) {
+        return _uintToString(_timestamp);
+    }
+}
