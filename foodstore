@@ -1,0 +1,207 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract FoodTraceability {
+    // 定义角色枚举
+    enum UserRole {
+        Producer,
+        Distributor,
+        Retailer
+    }
+
+    // 用户结构体，包含用户信息和权限
+    struct User {
+        string nickname;
+        string company;
+        UserRole role;
+    }
+
+    // 生产订单结构体
+    struct ProductionOrder {
+        string traceNumber;
+        string foodName;
+        string foodAddress;
+        uint quality;
+    }
+
+    // 分销订单结构体
+    struct DistributionOrder {
+        string traceNumber;
+        string foodName;
+        string foodAddress;
+        address userAddress;
+    }
+
+    // 销售订单结构体
+    struct SalesOrder {
+        string traceNumber;
+        string foodName;
+        string foodAddress;
+        address userAddress;
+    }
+
+    // 食品追溯信息结构体
+    struct FoodTraceInfo {
+        string traceNumber;
+        string name;
+        string foodAddress;
+        string produceTime;
+        string from;
+        string quality;
+    }
+
+    // 存储用户信息的映射，以用户地址为键
+    mapping(address => User) users;
+    // 存储生产订单的映射，以订单号为键
+    mapping(string => ProductionOrder) productionOrders;
+    // 存储分销订单的映射，以订单号为键
+    mapping(string => DistributionOrder) distributionOrders;
+    // 存储销售订单的映射，以订单号为键
+    mapping(string => SalesOrder) salesOrders;
+    // 存储食品追溯信息的映射，以订单号为键
+    mapping(string => FoodTraceInfo) foodTraceInfos;
+
+    // 存储管理员地址
+    address public admin;
+
+    // 构造函数，初始化管理员地址
+    constructor() {
+        admin = msg.sender;
+    }
+
+    // 修饰器，确保只有管理员可以调用函数
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin can call this function");
+        _;
+    }
+
+    // 修饰器，确保调用者是生产商
+    modifier onlyProducer() {
+        require(users[msg.sender].role == UserRole.Producer, "Only producers can call this function");
+        _;
+    }
+
+    // 修饰器，确保调用者是分销商
+    modifier onlyDistributor() {
+        require(users[msg.sender].role == UserRole.Distributor, "Only distributors can call this function");
+        _;
+    }
+
+    // 修饰器，确保调用者是销售商
+    modifier onlyRetailer() {
+        require(users[msg.sender].role == UserRole.Retailer, "Only retailers can call this function");
+        _;
+    }
+
+    // 创建用户函数，只有特定管理员可以调用
+    function createUser(
+        address _userAddress,
+        string memory _nickname,
+        string memory _company,
+        UserRole _role
+    ) public onlyAdmin {
+        require(users[_userAddress].role == UserRole(0), "User already exists");
+        require(bytes(_nickname).length > 0, "Nickname cannot be empty");
+        require(bytes(_company).length > 0, "Company cannot be empty");
+
+        users[_userAddress] = User(_nickname, _company, _role);
+    }
+
+    // 查询用户信息函数
+    function getUserInfo(address _userAddress) public view returns (UserRole role, string memory nickname, string memory company) {
+        require(users[_userAddress].role != UserRole(0), "User does not exist");
+        User memory user = users[_userAddress];
+        return (user.role, user.nickname, user.company);
+    }
+
+    // 检查订单号是否唯一
+    function isTraceNumberUnique(string memory _traceNumber) internal view returns (bool) {
+        return bytes(productionOrders[_traceNumber].traceNumber).length == 0 &&
+               bytes(distributionOrders[_traceNumber].traceNumber).length == 0 &&
+               bytes(salesOrders[_traceNumber].traceNumber).length == 0;
+    }
+
+    // 生产商创建生产订单函数
+    function createProductionOrder(
+        string memory _traceNumber,
+        string memory _foodName,
+        string memory _foodAddress,
+        uint _quality
+    ) public onlyProducer {
+        require(bytes(_traceNumber).length > 0, "Invalid trace number");
+        require(isTraceNumberUnique(_traceNumber), "Trace number already exists in other orders");
+        require(bytes(_foodName).length > 0, "Invalid food name");
+        require(bytes(_foodAddress).length > 0, "Invalid food address");
+
+        productionOrders[_traceNumber] = ProductionOrder(_traceNumber, _foodName, _foodAddress, _quality);
+    }
+
+    // 分销商创建分销订单函数
+    function createDistributionOrder(
+        string memory _traceNumber,
+        string memory _foodName,
+        string memory _foodAddress,
+        address _userAddress
+    ) public onlyDistributor {
+        require(bytes(_traceNumber).length > 0, "Invalid trace number");
+        require(isTraceNumberUnique(_traceNumber), "Trace number already exists in other orders");
+        require(bytes(_foodName).length > 0, "Invalid food name");
+        require(bytes(_foodAddress).length > 0, "Invalid food address");
+        require(_userAddress != address(0), "Invalid user address");
+        require(users[_userAddress].role != UserRole(0), "User address does not correspond to a valid user");
+
+        distributionOrders[_traceNumber] = DistributionOrder(_traceNumber, _foodName, _foodAddress, _userAddress);
+    }
+
+    // 销售商创建销售订单函数
+    function createSalesOrder(
+        string memory _traceNumber,
+        string memory _foodName,
+        string memory _foodAddress,
+        address _userAddress
+    ) public onlyRetailer {
+        require(bytes(_traceNumber).length > 0, "Invalid trace number");
+        require(isTraceNumberUnique(_traceNumber), "Trace number already exists in other orders");
+        require(bytes(_foodName).length > 0, "Invalid food name");
+        require(bytes(_foodAddress).length > 0, "Invalid food address");
+        require(_userAddress != address(0), "Invalid user address");
+        require(users[_userAddress].role != UserRole(0), "User address does not correspond to a valid user");
+
+        salesOrders[_traceNumber] = SalesOrder(_traceNumber, _foodName, _foodAddress, _userAddress);
+    }
+
+    // 食品信息追溯查询函数
+    function traceFood(string memory _traceNumber) public view returns (
+        string memory traceNumber,
+        string memory name,
+        string memory foodAddress,
+        string memory produceTime,
+        string memory from,
+        string memory quality
+    ) {
+        require(bytes(foodTraceInfos[_traceNumber].traceNumber).length > 0, "Food trace info does not exist");
+        FoodTraceInfo memory info = foodTraceInfos[_traceNumber];
+        return (info.traceNumber, info.name, info.foodAddress, info.produceTime, info.from, info.quality);
+    }
+
+    // 管理员添加食品追溯信息
+    function addFoodTraceInfo(
+        string memory _traceNumber,
+        string memory _name,
+        string memory _foodAddress,
+        string memory _produceTime,
+        string memory _from,
+        string memory _quality
+    ) public onlyAdmin {
+        require(bytes(_traceNumber).length > 0, "Invalid trace number");
+        require(bytes(_name).length > 0, "Invalid food name");
+        require(bytes(_foodAddress).length > 0, "Invalid food address");
+        require(bytes(_produceTime).length > 0, "Invalid produce time");
+        // 可以添加更复杂的时间格式验证
+        require(bytes(_from).length > 0, "Invalid producer address");
+        require(bytes(_quality).length > 0, "Invalid quality");
+        require(bytes(foodTraceInfos[_traceNumber].traceNumber).length == 0, "Food trace info already exists");
+
+        foodTraceInfos[_traceNumber] = FoodTraceInfo(_traceNumber, _name, _foodAddress, _produceTime, _from, _quality);
+    }
+}
